@@ -1,3 +1,3 @@
 #!/bin/bash
 # ID from https://console.cloud.google.com/home/dashboard
-appcfg.py -A zengraph-1260 -V v1 update .
+appcfg.py -A $(cat .gaeid) -V v1 update .
