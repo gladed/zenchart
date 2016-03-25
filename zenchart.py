@@ -72,7 +72,7 @@ class RepoTaskSync(webapp2.RequestHandler):
                 self.response.set_status(404)
             else:
                 logging.info("Sync Beginning")
-                github.getAllIssues(repo)
+                github.syncIssues(repo)
                 self.response.write("OK")
 
 app = webapp2.WSGIApplication([

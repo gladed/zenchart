@@ -36,12 +36,6 @@ def getAllPages(repo, url):
         more = len(page) == pageSize
     return items
 
-def syncIssues(repo):
-    # Determine the most recently updated issue
-    latest = None
-    for issue in repo.issues():
-        if not latest or latest < issue.github['']:
-            logging.info("???")
 
 def getIssueEvents(repo, issue):
     events = getAllPages(repo, issue.github['events_url'])
@@ -63,5 +57,48 @@ def getAllIssues(repo):
         getIssueEvents(repo, issue)
         issue.upsert()
 
-    #logging.info(json.dumps(repo.data, indent=2))
+def getUpdatedIssues(repo, recent):
+    refresh = set()
+    for page in range(0, 10):
+        url = repo.data['events_url'] + '?page=%d' % page
+        events = getJson(repo, url)
+        for event in events:
+            if event['created_at'] <= recent:
+                # We are done, fetch no more
+                return refresh
+            elif 'issue' in event['payload']:
+                number = event['payload']['issue']['number']
+                logging.info('We need to refresh issue #%s' % number)
+                refresh.add(number)
 
+def refreshIssue(repo, issues, number):
+    issue = next(issue for issue in issues if issue.number == number)
+    if not issue:
+        # Load it from scratch
+        url = uritemplate.expand(repo.data['issues_url'], { 'number': number })
+        issueData = getJson(url)
+        issue = Issue(repo = repo.key, github = issueData, number = issueData['number'])
+
+    getIssueEvents(repo, issue)
+    issue.upsert()
+    issues.append(issue)
+
+def syncIssues(repo):
+    # Load all issues and find the most recently created event
+    issues = list(repo.issues())
+    recent = None
+    for issue in issues:
+        for event in issue.github['events']:
+            createdAt = event['created_at']
+            if not recent or createdAt > recent:
+                recent = createdAt
+
+    logging.info('Looking for events that happened after %s' % recent)
+    refresh = getUpdatedIssues(repo, recent)
+
+    # For each issue that potentially changed, refresh it
+    for number in refresh:
+        refreshIssue(repo, issues, number)
+
+    # Use the github events API to find changes after recent
+    #logging.info(json.dumps(repo.data, indent=2))
