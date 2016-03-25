@@ -1,0 +1,1 @@
+$(echo $PATH|grep -q google_appengine) || export PATH=$PATH:~/bin/google_appengine

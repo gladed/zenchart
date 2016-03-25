@@ -1,0 +1,23 @@
+<html>
+<body>
+{% if repos %}
+<h1>Repositories</h1>
+<ul>
+  {% for repo in repos %}
+<li><a href="{{repo.url()}}">{{repo.name}}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No repos found</p>
+{% endif %}
+
+<h1>Add a repo</h1>
+<form action="/addRepo" method="post">
+  <div>Github Repository Name: <input type="text" name="repoName"></div>
+  <div>Github User Name: <input type="text" name="githubUser"></div>
+  <div>Github Access Token: <input type="text" name="githubToken"></div>
+  <div>Zenhub Access Token: <input type="text" name="zenhubToken"></div>
+  <div><input type="submit" value="Add"></div>
+</form>
+</body>
+</html>

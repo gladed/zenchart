@@ -1,0 +1,15 @@
+runtime: python27
+api_version: 1
+threadsafe: true
+
+skip_files:
+- ^.*\.json
+- ^dev/.*
+
+handlers:
+- url: /.*
+  script: zenchart.app
+
+libraries:
+- name: jinja2
+  version: latest
