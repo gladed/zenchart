@@ -1,9 +1,20 @@
 {% extends "base.html" %}
 {% block body %}
-<h1><a href="/">Home</a> >> {{ repo.name }}<h1>
-
+<h1><a href="/">Home</a> &rarr; {{ repo.name }}</h1>
+{% if issues %}
+<ul>
+  {% for issue in issues %}
+<li>{{ issue.number }} - {{ issue.github['state'] }} -  {{ issue.github['events']|length }} events</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No issues</p>
+{% endif %}
+<form action="{{ repo.url() + '/sync' }}" method="post">
+  <div><input type="submit" value="Sync this repo"></div>
+</form>
 
 <form action="{{ repo.url() + '/delete' }}" method="post">
   <div><input type="submit" value="Delete this repo"></div>
-<form>
+</form>
 {% endblock %}

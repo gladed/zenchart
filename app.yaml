@@ -11,6 +11,9 @@ handlers:
 - url: /.*
   script: zenchart.app
 
+builtins:
+- deferred: on
+
 libraries:
 - name: jinja2
   version: latest
