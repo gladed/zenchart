@@ -60,7 +60,6 @@ class RepoSyncPage(webapp2.RequestHandler):
         if not repo:
             self.response.set_status(404)
         else:
-            # TODO: don't resync more often than X?
             deferred.defer(github.syncIssues, repo)
             #deferred.defer(github.getAllIssues, repo)
             #taskqueue.add(url=repo.url() + '/task/sync')

@@ -1,25 +1,20 @@
 from urllib2 import Request, urlopen, URLError, HTTPError
-import base64, json
-import datetime, time
-import logging
-from model import Issue
+import base64, json, logging, datetime, time
 from google.appengine.ext import deferred
-# Get vendored uritemplate module
 from google.appengine.ext import vendor
-vendor.add('lib')
+vendor.add('lib') # uritemplate is vendored
 import uritemplate
+
+from model import Issue
 
 githubUrl = 'https://api.github.com/repos'
 zenhubUrl = 'https://api.zenhub.io/p1/repositories'
 
-def currentMillis():
-    return int(round(time.time() * 1000))
-
-def getZenhubJson(repo, url):
+def getZenhub(repo, url):    
+    if not repo.auth.zenhubToken: return
     if zenhubUrl not in url:
-        url = zenhubUrl + url
+        url = '%s/%s%s' % (zenhubUrl, repo.data['id'], url)
     logging.info('zenhub GET ' + url)
-    now = currentMillis()
     request = Request(url)
     request.add_header('X-Authentication-Token', repo.auth.zenhubToken)
     try:
@@ -27,7 +22,7 @@ def getZenhubJson(repo, url):
     except HTTPError, err:
         logging.info('Uh oh: %s', err)
 
-def getJson(repo, url):    
+def getGithub(repo, url):    
     if githubUrl not in url:
         url = githubUrl + '/' + repo.name + url
     logging.info('github GET ' + url)
@@ -36,7 +31,7 @@ def getJson(repo, url):
     request.add_header('Authorization', 'Basic ' + encoded)
     return json.load(urlopen(request))
 
-def getAllPages(repo, url):
+def getGithubAll(repo, url):
     pageSize = 50
     pageNumber = 0
     items = []
@@ -47,26 +42,26 @@ def getAllPages(repo, url):
        url += '&'
     while more:
         fetchUrl = url + 'per_page=%d&page=%d' % (pageSize, pageNumber)
-        page = getJson(repo, fetchUrl)
+        page = getGithub(repo, fetchUrl)
         items.extend(page)
         pageNumber += 1
         more = len(page) == pageSize
     return items
 
-
 def getIssueEvents(repo, issue):
-    events = getAllPages(repo, issue.github['events_url'])
+    """Get events for this issue from Github"""
+    events = getGithubAll(repo, issue.github['events_url'])
     logging.info('Found %d events for #%s' % (len(events),issue.number))
     issue.github['events'] = events
 
 def getAllIssues(repo):
     # Update the repo with content
-    repo.data = getJson(repo, '')
+    repo.data = getGithub(repo, '')
     repo.put()
 
     issueUrl = uritemplate.expand(repo.data['issues_url'], {})
     issueUrl += '?state=all'
-    issues = getAllPages(repo, issueUrl)
+    issues = getGithubAll(repo, issueUrl)
     for issueData in issues:
         issue = Issue(repo = repo.key, github = issueData, number = issueData['number'])
         getIssueEvents(repo, issue)
@@ -75,13 +70,29 @@ def getAllIssues(repo):
     # Also load all zenhub issues. This may take a while
     getZenhubIssues(repo)
 
+def getZenhubIssues(repo, keys = None):
+    if not repo.auth.zenhubToken: return
+    if keys is None:
+        keys = map(lambda i: i.key, repo.issues())
+    logging.info("Getting zenhub issues from list (%s)" % len(keys))
+    while keys:
+        key = keys[0]
+        issue = key.get()
+        if getZenhubIssue(repo, issue):
+            keys.pop(0)
+        else:
+            logging.info("Deferring at %s" % issue.number)
+            deferred.defer(getZenhubIssues, repo, keys, _countdown=20)
+            break
+    return True
+
 def getZenhubIssue(repo, issue):
     now = datetime.datetime.now()
     if hasattr(issue, 'zenhubUpdate') and issue.zenhubUpdate and (now - issue.zenhubUpdate).total_seconds() < 60:
         return True
-    zenhub = getZenhubJson(repo, '/%s/issues/%s' % (repo.data['id'], issue.number))
+    zenhub = getZenhub(repo, '/issues/%s' % issue.number)
     if not zenhub: return False
-    zenhub['events'] = getZenhubJson(repo, '/%s/issues/%s/events' % (repo.data['id'], issue.number))
+    zenhub['events'] = getZenhub(repo, '/issues/%s/events' % issue.number)
     if zenhub['events'] is None: return False
     issue.zenhub = zenhub
     issue.zenhubUpdate = now
@@ -89,81 +100,51 @@ def getZenhubIssue(repo, issue):
     logging.info("Updated #%s with %d zenhub events" % (issue.number, len(zenhub['events'])))
     return True
 
-def getZenhubIssues(repo, numbers = None):
-    logging.info("Getting zenhub issues from list: %s" % numbers)
-    if numbers is None:
-        numbers = map(lambda i: i.number, repo.issues())
-    while numbers:
-        number = numbers[0]
-        issue = repo.issue(number)
-        if getZenhubIssue(repo, issue):
-            numbers.pop(0)
-        else:
-            logging.info("Deferring at %s" % number)
-            deferred.defer(getZenhubIssues, repo, numbers, _countdown=20)
-            break
-    return True
-
 def getUpdatedIssues(repo, recent):
-    """Scan github events API for things that happened after the specified recent time.
-       Return the list of issue numbers that need refreshing, and the most recent time found"""
+    """Return issue numbers for issues updated in github since 'recent'"""
     refresh = set()
     for page in range(0, 10):
         url = repo.data['events_url'] + '?page=%d' % page
-        events = getJson(repo, url)        
+        events = getGithub(repo, url)        
         for event in events:
             if event['created_at'] <= recent:
                 # We are done, fetch no more
                 return refresh, events[0]['created_at']
             elif 'issue' in event['payload']:
                 number = event['payload']['issue']['number']
-                logging.info('We need to refresh issue #%s because latest event %s is after most recent %s' % (number, event['created_at'], recent))
                 refresh.add(number)
 
-def first(items, matcher):
-    return next((item for item in items if matcher(item)), None)
-
-def refreshIssue(repo, issues, number, recent):
-    url = uritemplate.expand(repo.data['issues_url'], { 'number': number })
-    issueData = getJson(repo, url)
-    now = datetime.datetime.now()
-
-    # Sync with db...
-    issue = first(issues, lambda x: x.number == number)
-    if not issue:
-        issue = Issue(repo = repo.key, github = issueData, number = issueData['number'])
-    else: 
-        issue.github = issueData
-    getIssueEvents(repo, issue)
-    issue.githubUpdate = recent
-    issue.upsert()
+def findIssue(issues, number):
+    """Return the first issue in issues with the same number"""
+    for issue in issues:
+        if issue.number == number:
+            return issue
 
 def syncIssues(repo):
     # Load all issues from store and find the most recent update time
     issues = list(repo.issues())
     recent = None
     for issue in issues:
-        for event in issue.github['events']:
-            createdAt = event['created_at']
-            if not recent or createdAt > recent:
-                recent = createdAt
-        if 'updated_at' in issue.github:
-            updatedAt = issue.github['updated_at']
-            if not recent or updatedAt > recent:
-                recent = updatedAt
-        if hasattr(issue, 'githubUpdate'):
-            if issue.githubUpdate > recent:
-                recent = issue.githubUpdate
+        recent = max(recent, issue.githubUpdate)
 
-    logging.info('Looking for events that happened after %s' % recent)
-    refresh, recent = getUpdatedIssues(repo, recent)
-    if not refresh:
+    toRefresh, recent = getUpdatedIssues(repo, recent)
+    if not toRefresh:
         logging.info("No items to refresh")
 
     # For each issue that potentially changed, refresh it
-    for number in refresh:
-        refreshIssue(repo, issues, number, recent)
+    keysToRefresh = []
+    for number in toRefresh:
+        logging.info("Handling issue %s" % number)
+        issue = findIssue(issues, number)
+        if not issue:
+            issue = Issue(repo = repo.key, number = number)
+        url = uritemplate.expand(repo.data['issues_url'], { 'number': number })
+        issue.github = getGithub(repo, url) 
+        getIssueEvents(repo, issue)
+        issue.githubUpdate = recent
+        logging.info("Upserting issue %s" % issue.number)
+        issue.upsert()
+        keysToRefresh.append(issue.key)
 
-    # Go get zenhub updates
-    getZenhubIssues(repo, list(refresh))
-
+    # Go get zenhub updates (separately so it can be metered safely)
+    getZenhubIssues(repo, keysToRefresh)
