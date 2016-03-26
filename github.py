@@ -71,35 +71,38 @@ def getAllIssues(repo):
         issue = Issue(repo = repo.key, github = issueData, number = issueData['number'])
         getIssueEvents(repo, issue)
         issue.upsert()
+
     # Also load all zenhub issues. This may take a while
     getZenhubIssues(repo)
+
+def getZenhubIssue(repo, issue):
+    now = datetime.datetime.now()
+    if hasattr(issue, 'zenhubUpdate') and issue.zenhubUpdate and (now - issue.zenhubUpdate).total_seconds() < 60:
+        return True
+    zenhub = getZenhubJson(repo, '/%s/issues/%s' % (repo.data['id'], issue.number))
+    if not zenhub: return False
+    zenhub['events'] = getZenhubJson(repo, '/%s/issues/%s/events' % (repo.data['id'], issue.number))
+    if zenhub['events'] is None: return False
+    issue.zenhub = zenhub
+    issue.zenhubUpdate = now
+    issue.upsert()
+    logging.info("Updated #%s with %d zenhub events" % (issue.number, len(zenhub['events'])))
+    return True
 
 def getZenhubIssues(repo, numbers = None):
     logging.info("Getting zenhub issues from list: %s" % numbers)
     if numbers is None:
         numbers = map(lambda i: i.number, repo.issues())
-        getZenhubIssues(repo, numbers)
     while numbers:
         number = numbers[0]
         issue = repo.issue(number)
-        now = datetime.datetime.now()
-        if not hasattr(issue, 'zenhubUpdate') or (now - issue.zenhubUpdate).total_seconds() > 60:
-            zenhub = getZenhubJson(repo, '/%s/issues/%s' % (repo.data['id'], issue.number))
-            if not zenhub:
-                deferred.defer(getZenhubIssues, repo, numbers, _countdown=12)
-                return
-
-            zenhub['events'] = getZenhubJson(repo, '/%s/issues/%s/events' % (repo.data['id'], issue.number))
-            if zenhub['events'] is None:
-                deferred.defer(getZenhubIssues, repo, numbers, _countdown=12)
-                return
-
-            issue.zenhub = zenhub
-            issue.zenhubUpdate = now
-            issue.upsert()
-            logging.info("Updated #%s with %d zenhub events" % (number, len(zenhub['events'])))
-
-        numbers.pop(0)
+        if getZenhubIssue(repo, issue):
+            numbers.pop(0)
+        else:
+            logging.info("Deferring at %s" % number)
+            deferred.defer(getZenhubIssues, repo, numbers, _countdown=20)
+            break
+    return True
 
 def getUpdatedIssues(repo, recent):
     """Scan github events API for things that happened after the specified recent time.

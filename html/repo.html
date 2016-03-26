@@ -4,7 +4,11 @@
 {% if issues %}
 <ul>
   {% for issue in issues %}
-<li><a href='{{ repo.url() + '/issue/' + issue.number|string }}'>{{ issue.number }}</a> - {{ issue.github['state'] }} -  {{ issue.github['events']|length }} events</li>
+<li><a href='{{ repo.url() + '/issue/' + issue.number|string }}'>{{ issue.number }}</a> - State: {{ issue.github.state }} -  {{ issue.github['events']|length }} event(s)
+    {% if issue.zenhub and issue.zenhub.pipeline %}
+- Pipeline: {{ issue.zenhub.pipeline.name }}
+    {% endif %}
+</li>
   {% endfor %}
 </ul>
 {% else %}
