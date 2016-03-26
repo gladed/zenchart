@@ -36,11 +36,18 @@ class Repo(ndb.Model):
     def issues(self):
         return Issue.query(Issue.repo==self.key).fetch()
 
+    def issue(self, number):
+        results = Issue.query(Issue.repo==self.key, Issue.number==number).fetch(1)
+        if results:
+            for result in results:
+                return result
+
 class Issue(ndb.Model):
     repo = ndb.KeyProperty(kind=Repo)
     number = ndb.IntegerProperty(indexed=True)
     github = ndb.JsonProperty()
     zenhub = ndb.JsonProperty()
+    zenhubUpdate = ndb.DateTimeProperty()
     updated = ndb.DateTimeProperty(auto_now=True)
 
     def upsert(self):

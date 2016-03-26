@@ -28,6 +28,7 @@ class AddRepo(webapp2.RequestHandler):
         repo.auth.githubToken = self.request.get('githubToken')
         repo.auth.githubUser = self.request.get('githubUser')
 	repo.put()
+        deferred.defer(github.getAllIssues, repo)
         self.redirect(repo.url())
 
 class RepoPage(webapp2.RequestHandler):
@@ -46,7 +47,8 @@ class RepoSyncPage(webapp2.RequestHandler):
             self.response.set_status(404)
         else:
             # TODO: don't resync more often than X?
-            deferred.defer(github.getAllIssues, repo)
+            deferred.defer(github.syncIssues, repo)
+            #deferred.defer(github.getAllIssues, repo)
             #taskqueue.add(url=repo.url() + '/task/sync')
             self.redirect(repo.url())
 
@@ -66,7 +68,6 @@ class RepoTaskSync(webapp2.RequestHandler):
         if not DEBUG and 'X-AppEngine-QueueName' not in self.request.headers:
             self.response.set_status(400)
         else:
-            # TODO: BEGIN
             repo = Repo.get(id)
             if not repo:
                 self.response.set_status(404)
