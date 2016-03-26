@@ -148,12 +148,12 @@ def syncIssues(repo):
     if not refresh:
         logging.info("No items to refresh")
 
-    # Go get zenhub updates
-    getZenhubIssues(repo, refresh)
-
     # For each issue that potentially changed, refresh it
     for number in refresh:
         refreshIssue(repo, issues, number)
+
+    # Go get zenhub updates
+    getZenhubIssues(repo, list(refresh))
 
     # Use the github events API to find changes after recent
     #logging.info(json.dumps(repo.data, indent=2))
