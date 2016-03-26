@@ -37,7 +37,7 @@ class Repo(ndb.Model):
         return Issue.query(Issue.repo==self.key).fetch()
 
     def issue(self, number):
-        results = Issue.query(Issue.repo==self.key, Issue.number==number).fetch(1)
+        results = Issue.query(Issue.repo==self.key, Issue.number==int(number)).fetch(1)
         if results:
             for result in results:
                 return result

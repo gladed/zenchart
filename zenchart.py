@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import os
 import webapp2, jinja2, logging
-import urllib, cgi
+import urllib, cgi, json
 from google.appengine.ext import ndb
 from google.appengine.api import taskqueue
 import github
@@ -39,6 +39,20 @@ class RepoPage(webapp2.RequestHandler):
             self.response.set_status(404)
         else:
             self.response.write(JINJA_ENVIRONMENT.get_template('repo.html').render({'repo': repo, 'issues': issues}))
+
+class IssuePage(webapp2.RequestHandler):
+    def get(self, id, number):
+        repo = Repo.get(id)
+        if not repo:
+            self.response.set_status(404)
+        else:
+            issue = repo.issue(number)
+            if not issue:
+                self.response.set_status(404)
+            else:
+                full = { 'github': issue.github, 'zenhub': issue.zenhub }
+                self.response.headers['Content-Type'] = 'application/json'
+                self.response.out.write(json.dumps(full, indent=2))
 
 class RepoSyncPage(webapp2.RequestHandler):
     def post(self, id):
@@ -83,4 +97,5 @@ app = webapp2.WSGIApplication([
     webapp2.Route(r'/repo/<id:\d+>/delete', RepoDeletePage),
     webapp2.Route(r'/repo/<id:\d+>/sync', RepoSyncPage),
     webapp2.Route(r'/repo/<id:\d+>/task/sync', RepoTaskSync),
+    webapp2.Route(r'/repo/<id:\d+>/issue/<number:\d+>', IssuePage),
 ],debug=True)

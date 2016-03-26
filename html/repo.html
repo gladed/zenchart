@@ -4,7 +4,7 @@
 {% if issues %}
 <ul>
   {% for issue in issues %}
-<li>{{ issue.number }} - {{ issue.github['state'] }} -  {{ issue.github['events']|length }} events</li>
+<li><a href='{{ repo.url() + '/issue/' + issue.number|string }}'>{{ issue.number }}</a> - {{ issue.github['state'] }} -  {{ issue.github['events']|length }} events</li>
   {% endfor %}
 </ul>
 {% else %}
