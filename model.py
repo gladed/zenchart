@@ -30,7 +30,7 @@ class Repo(ndb.Model):
 
     @classmethod
     def getParentKey(cls):
-        # TODO: In the future this should come from the current user id
+        # TODO: In the future this should come from the current user id probably
         return allRepoKey
 
     def issues(self):
@@ -41,6 +41,11 @@ class Repo(ndb.Model):
         if results:
             for result in results:
                 return result
+    def delete(self):
+        """Remove this item and its children from the db"""
+        for issue in self.issues():
+            issue.key.delete()
+        self.key.delete()
 
 class Issue(ndb.Model):
     repo = ndb.KeyProperty(kind=Repo)

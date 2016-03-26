@@ -10,7 +10,7 @@ from model import Issue
 githubUrl = 'https://api.github.com/repos'
 zenhubUrl = 'https://api.zenhub.io/p1/repositories'
 
-def getZenhub(repo, url):    
+def getZenhub(repo, url):
     if not repo.auth.zenhubToken: return
     if zenhubUrl not in url:
         url = '%s/%s%s' % (zenhubUrl, repo.data['id'], url)
@@ -22,7 +22,7 @@ def getZenhub(repo, url):
     except HTTPError, err:
         logging.info('Uh oh: %s', err)
 
-def getGithub(repo, url):    
+def getGithub(repo, url): 
     if githubUrl not in url:
         url = githubUrl + '/' + repo.name + url
     logging.info('github GET ' + url)
@@ -68,10 +68,11 @@ def getAllIssues(repo):
         issue.upsert()
 
     # Also load all zenhub issues. This may take a while
-    getZenhubIssues(repo)
+    getZenhubIssues(repo.key)
 
-def getZenhubIssues(repo, keys = None):
-    if not repo.auth.zenhubToken: return
+def getZenhubIssues(repoKey, keys = None):
+    repo = repoKey.get()   
+    if not repo or not repo.auth.zenhubToken: return
     if keys is None:
         keys = map(lambda i: i.key, repo.issues())
     logging.info("Getting zenhub issues from list (%s)" % len(keys))
@@ -147,4 +148,4 @@ def syncIssues(repo):
         keysToRefresh.append(issue.key)
 
     # Go get zenhub updates (separately so it can be metered safely)
-    getZenhubIssues(repo, keysToRefresh)
+    getZenhubIssues(repo.key, keysToRefresh)

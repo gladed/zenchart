@@ -69,7 +69,7 @@ class RepoDeletePage(webapp2.RequestHandler):
     def post(self, id):
         repo = Repo.get(id)
         if repo:
-            repo.key.delete()
+            repo.delete()
             self.redirect('/') 
         else:
             self.response.set_status(404)
