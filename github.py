@@ -83,7 +83,7 @@ def getZenhubIssues(repoKey, keys = None):
             keys.pop(0)
         else:
             logging.info("Deferring at %s" % issue.number)
-            deferred.defer(getZenhubIssues, repo, keys, _countdown=20)
+            deferred.defer(getZenhubIssues, repoKey, keys, _countdown=20)
             break
     return True
 
@@ -104,16 +104,19 @@ def getZenhubIssue(repo, issue):
 def getUpdatedIssues(repo, recent):
     """Return issue numbers for issues updated in github since 'recent'"""
     refresh = set()
+    latestEventTime = None
     for page in range(0, 10):
         url = repo.data['events_url'] + '?page=%d' % page
         events = getGithub(repo, url)        
         for event in events:
+            latestEventTime = max(latestEventTime, event['created_at'])
             if event['created_at'] <= recent:
                 # We are done, fetch no more
-                return refresh, events[0]['created_at']
+                return refresh, latestEventTime
             elif 'issue' in event['payload']:
                 number = event['payload']['issue']['number']
                 refresh.add(number)
+    return refresh, latestEventTime
 
 def findIssue(issues, number):
     """Return the first issue in issues with the same number"""
@@ -123,20 +126,23 @@ def findIssue(issues, number):
 
 def syncIssues(repo):
     # Load all issues from store and find the most recent update time
-    issues = list(repo.issues())
     recent = None
-    for issue in issues:
+    for issue in repo.issues():
+        logging.info("Comparing %s" % issue.githubUpdate)
         recent = max(recent, issue.githubUpdate)
 
+    logging.info("Getting updated issues since %s" % recent)
     toRefresh, recent = getUpdatedIssues(repo, recent)
     if not toRefresh:
         logging.info("No items to refresh")
+        return
 
     # For each issue that potentially changed, refresh it
     keysToRefresh = []
     for number in toRefresh:
-        logging.info("Handling issue %s" % number)
-        issue = findIssue(issues, number)
+        # if the repo suddenly disappears, quit
+        if not repo.key.get(): return
+        issue = repo.issue(number)
         if not issue:
             issue = Issue(repo = repo.key, number = number)
         url = uritemplate.expand(repo.data['issues_url'], { 'number': number })

@@ -88,7 +88,7 @@ class RepoTaskSync(webapp2.RequestHandler):
                 logging.info("Sync Beginning")
                 #github.syncIssues(repo)
                 #deferred.defer(github.getAllIssues, repo)
-                deferred.defer(github.getZenhubIssues, repo)
+                deferred.defer(github.getZenhubIssues, repo.key)
                 self.response.write("OK")
 
 app = webapp2.WSGIApplication([
