@@ -64,8 +64,6 @@ def getAllIssues(repo):
     repo.data = getJson(repo, '')
     repo.put()
 
-    logging.info(uritemplate.expand(repo.data['issues_url'], {}))
-  
     issueUrl = uritemplate.expand(repo.data['issues_url'], {})
     issueUrl += '?state=all'
     issues = getAllPages(repo, issueUrl)
@@ -85,7 +83,7 @@ def getZenhubIssues(repo, numbers = None):
         number = numbers[0]
         issue = repo.issue(number)
         now = datetime.datetime.now()
-        if not issue.zenhubUpdate or (now - issue.zenhubUpdate).total_seconds() > 60:
+        if not hasattr(issue, 'zenhubUpdate') or (now - issue.zenhubUpdate).total_seconds() > 60:
             zenhub = getZenhubJson(repo, '/%s/issues/%s' % (repo.data['id'], issue.number))
             if not zenhub:
                 deferred.defer(getZenhubIssues, repo, numbers, _countdown=12)
@@ -97,44 +95,48 @@ def getZenhubIssues(repo, numbers = None):
                 return
 
             issue.zenhub = zenhub
-            issue.zenhubUpdate = datetime.datetime.now()
+            issue.zenhubUpdate = now
             issue.upsert()
             logging.info("Updated #%s with %d zenhub events" % (number, len(zenhub['events'])))
 
         numbers.pop(0)
-    logging.info("Complete")
 
 def getUpdatedIssues(repo, recent):
+    """Scan github events API for things that happened after the specified recent time.
+       Return the list of issue numbers that need refreshing, and the most recent time found"""
     refresh = set()
     for page in range(0, 10):
         url = repo.data['events_url'] + '?page=%d' % page
-        events = getJson(repo, url)
+        events = getJson(repo, url)        
         for event in events:
             if event['created_at'] <= recent:
                 # We are done, fetch no more
-                return refresh
+                return refresh, events[0]['created_at']
             elif 'issue' in event['payload']:
                 number = event['payload']['issue']['number']
-                logging.info('We need to refresh issue #%s' % number)
+                logging.info('We need to refresh issue #%s because latest event %s is after most recent %s' % (number, event['created_at'], recent))
                 refresh.add(number)
 
 def first(items, matcher):
     return next((item for item in items if matcher(item)), None)
 
-def refreshIssue(repo, issues, number):
+def refreshIssue(repo, issues, number, recent):
+    url = uritemplate.expand(repo.data['issues_url'], { 'number': number })
+    issueData = getJson(repo, url)
+    now = datetime.datetime.now()
+
+    # Sync with db...
     issue = first(issues, lambda x: x.number == number)
     if not issue:
-        # Load it from scratch
-        url = uritemplate.expand(repo.data['issues_url'], { 'number': number })
-        issueData = getJson(repo, url)
         issue = Issue(repo = repo.key, github = issueData, number = issueData['number'])
-
+    else: 
+        issue.github = issueData
     getIssueEvents(repo, issue)
+    issue.githubUpdate = recent
     issue.upsert()
-    issues.append(issue)
 
 def syncIssues(repo):
-    # Load all issues from store and find the most recently event update time
+    # Load all issues from store and find the most recent update time
     issues = list(repo.issues())
     recent = None
     for issue in issues:
@@ -142,18 +144,23 @@ def syncIssues(repo):
             createdAt = event['created_at']
             if not recent or createdAt > recent:
                 recent = createdAt
+        if 'updated_at' in issue.github:
+            updatedAt = issue.github['updated_at']
+            if not recent or updatedAt > recent:
+                recent = updatedAt
+        if hasattr(issue, 'githubUpdate'):
+            if issue.githubUpdate > recent:
+                recent = issue.githubUpdate
 
     logging.info('Looking for events that happened after %s' % recent)
-    refresh = getUpdatedIssues(repo, recent)
+    refresh, recent = getUpdatedIssues(repo, recent)
     if not refresh:
         logging.info("No items to refresh")
 
     # For each issue that potentially changed, refresh it
     for number in refresh:
-        refreshIssue(repo, issues, number)
+        refreshIssue(repo, issues, number, recent)
 
     # Go get zenhub updates
     getZenhubIssues(repo, list(refresh))
 
-    # Use the github events API to find changes after recent
-    #logging.info(json.dumps(repo.data, indent=2))

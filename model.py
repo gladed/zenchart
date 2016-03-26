@@ -46,6 +46,7 @@ class Issue(ndb.Model):
     repo = ndb.KeyProperty(kind=Repo)
     number = ndb.IntegerProperty(indexed=True)
     github = ndb.JsonProperty()
+    githubUpdate = ndb.StringProperty()
     zenhub = ndb.JsonProperty()
     zenhubUpdate = ndb.DateTimeProperty()
     updated = ndb.DateTimeProperty(auto_now=True)
@@ -59,8 +60,10 @@ class Issue(ndb.Model):
             self.key = old.key
             if self.github:
                 old.github = self.github
+                old.githubUpdate = self.githubUpdate
             if self.zenhub:
-                old.zenhub = self.zenhub 
+                old.zenhub = self.zenhub
+                old.zenhubUpdate = self.zenhubUpdate
             old.put()
         else:
             self.put()
