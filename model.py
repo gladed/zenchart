@@ -32,8 +32,8 @@ class Repo(ndb.Model):
         self.key.delete()
 
     @classmethod
-    def create(cls, user):
-        repo = Repo(parent = userKey(user))
+    def create(cls, user, *args, **kwargs):
+        repo = Repo(parent = userKey(user), **kwargs)
         return repo
 
     @classmethod

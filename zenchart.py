@@ -1,19 +1,15 @@
 #!/usr/bin/python
-import os, random
+import os, random, gc
 import webapp2, jinja2, logging
 import urllib, cgi, json, urllib2, urlparse
-from google.appengine.ext import ndb
+from google.appengine.ext import ndb, deferred
 from google.appengine.api import taskqueue
-import github
-from model import Auth, Repo
-from google.appengine.ext import deferred
-from google.appengine.api import memcache
 from webapp2_extras import sessions
-import yaml
-from config import config
+
+import github, zenhub
 from github import Github
-import zenhub
-import gc
+from model import Auth, Repo
+from config import config
 
 JINJA_ENVIRONMENT = jinja2.Environment(
     loader=jinja2.FileSystemLoader(os.path.dirname(__file__) + '/html'),
@@ -79,19 +75,21 @@ class RepoAddPage(BaseHandler):
 
     def post(self): 
         user = self.user()       
-        repo = Repo.create(user)
-        repo.name = self.request.get('repo')
-        repo.auth = Auth(zenhubToken = self.request.get('zenhubToken'))
+        repo = Repo.create(user,
+            name=self.request.get('repo'),
+            auth=Auth(zenhubToken = self.request.get('zenhubToken')))
         repo.data = Github(user).repo(repo.name)
         logging.info("Adding repo %s" % repo)
         repo.put()
-        deferred.defer(github.syncIssues, user, repo.key)
+        # Initiate full sync
+        deferred.defer(github.syncIssues, user, repo.key, True)
         self.redirect(repo.url())
 
 class RepoPage(BaseHandler):
     def get(self, id):
         user = self.user()
         repo = Repo.get(user, id)
+        # Charting here?
         if self.request.get('s'):
             logging.info("Deferring github repo issue sync")
             deferred.defer(github.syncIssues, user, repo.key)
@@ -104,12 +102,12 @@ class RepoPage(BaseHandler):
             if not repo:
                 self.response.set_status(404)
             else:
-                self.response.write(JINJA_ENVIRONMENT.get_template('repo.html').render({'user': user, 'repo': repo, 'issues': issues}))
+                page = {'user': user, 'repo': repo, 'issues': issues}
+                self.response.write(JINJA_ENVIRONMENT.get_template('repo.html').render(page))
 
 class RepoDeletePage(BaseHandler):
     def post(self, id):
-        user = self.user()
-        repo = Repo.get(user, id)
+        repo = Repo.get(self.user(), id)
         if repo:
             repo.delete()
             self.redirect('/') 
@@ -140,7 +138,7 @@ class LoginPage(BaseHandler):
             user = session.user()
             self.redirect('/')
         else:
-            # Github login
+            # Github login (see https://developer.github.com/v3/oauth/)
             state = '%030x' % random.randrange(16**30)
             url = 'https://github.com/login/oauth/authorize?%s' % urllib.urlencode({
                 'client_id': config['github']['id'],
@@ -186,8 +184,8 @@ app = webapp2.WSGIApplication([
     ('/repo/add', RepoAddPage),
     ('/login', LoginPage),
     ('/logout', LogoutPage),
+    ('/auth/github', GithubAuthPage),
     webapp2.Route(r'/repo/<id:\d+>', RepoPage),
     webapp2.Route(r'/repo/<id:\d+>/delete', RepoDeletePage),
     webapp2.Route(r'/repo/<id:\d+>/issue/<number:\d+>', IssuePage),
-    ('/auth/github', GithubAuthPage),
 ],debug=True,config=config)

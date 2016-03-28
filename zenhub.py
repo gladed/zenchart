@@ -35,14 +35,17 @@ class Zenhub:
 def syncIssues(repoKey):
     try:
         Zenhub(repoKey.get()).syncIssues()
-        repo = repoKey.get()
-        repo.syncing = False
-        repo.put()
     except HTTPError as e:
         if e.code == 403:
             logging.info('Zenhub returned 403, trying again after a while...')
             deferred.defer(syncIssues, repoKey, _countdown=20)
+            return
         else:
             logging.exception('Failed to sync Zenhub issues')
     except:
         logging.exception('Failed to sync Zenhub issues')
+
+    # For whatever reason, done syncing
+    repo = repoKey.get()
+    repo.syncing = False
+    repo.put()
