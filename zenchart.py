@@ -13,6 +13,7 @@ import yaml
 from config import config
 from github import Github
 import zenhub
+import gc
 
 JINJA_ENVIRONMENT = jinja2.Environment(
     loader=jinja2.FileSystemLoader(os.path.dirname(__file__) + '/html'),
@@ -26,6 +27,7 @@ class BaseHandler(webapp2.RequestHandler):
             webapp2.RequestHandler.dispatch(self)
         finally:
             self.session_store.save_sessions(self.response)
+            gc.collect()
 
     def user(self):
         """Return the current user data or redirect to /login"""
