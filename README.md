@@ -25,3 +25,10 @@ webapp2_extras.sessions:
   secret_key: <SOME LONG RANDOM THING>
 ```
 
+### Running locally
+
+When authenticating locally, Github will redirect you to the registered
+(public) URL. To complete the authentication process, replace the URL in your web client
+with the local url, for example replace `http://whatever.appspot.com/auth/github?code=f0...ef&state=90..dd`
+with `localhost:8080/auth/github?code=f0...ef&state=90..dd`.
+
