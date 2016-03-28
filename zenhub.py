@@ -1,5 +1,7 @@
 from urllib2 import Request, urlopen, HTTPError
 import json, datetime, logging
+from google.appengine.ext import deferred
+from model import Repo
 
 zenhubUrl = 'https://api.zenhub.io/p1'
 

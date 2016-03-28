@@ -1,7 +1,7 @@
 #!/usr/bin/python
-import os
+import os, random
 import webapp2, jinja2, logging
-import urllib, cgi, json
+import urllib, cgi, json, urllib2, urlparse
 from google.appengine.ext import ndb
 from google.appengine.api import taskqueue
 import github
@@ -53,7 +53,9 @@ class BaseHandler(webapp2.RequestHandler):
 
 class MainPage(BaseHandler):
     def get(self):
-        user = self.user()
+        user = None
+        if 'user' in self.session:
+            user = self.session['user']
 
         # List repositories that we know about
         if user: 
@@ -79,9 +81,9 @@ class RepoAddPage(BaseHandler):
         repo.name = self.request.get('repo')
         repo.auth = Auth(zenhubToken = self.request.get('zenhubToken'))
         repo.data = Github(user).repo(repo.name)
+        logging.info("Adding repo %s" % repo)
         repo.put()
-        logging.info("Putting repo %s" % repo)
-        # TODO: defer get all issues for this repo
+        deferred.defer(github.syncIssues, user, repo.key)
         self.redirect(repo.url())
 
 class RepoPage(BaseHandler):
@@ -91,10 +93,6 @@ class RepoPage(BaseHandler):
         if self.request.get('s'):
             logging.info("Deferring github repo issue sync")
             deferred.defer(github.syncIssues, user, repo.key)
-            self.redirect(repo.url())
-        elif self.request.get('z'):
-            logging.info("Deferring zenhub repo issue sync")
-            deferred.defer(zenhub.syncIssues, repo.key)
             self.redirect(repo.url())
         elif self.request.get('f'):
             deferred.defer(github.getAllIssues, user, repo.key)
@@ -134,8 +132,6 @@ class AddRepo(webapp2.RequestHandler):
         repo.name = name
         repo.auth = Auth()
         repo.auth.zenhubToken = self.request.get('zenhubToken')
-        repo.auth.githubToken = self.request.get('githubToken')
-        repo.auth.githubUser = self.request.get('githubUser')
 	repo.put()
         deferred.defer(github.getAllIssues, repo)
         self.redirect(repo.url())
@@ -174,10 +170,20 @@ class RepoTaskSync(webapp2.RequestHandler):
 class LoginPage(BaseHandler):
     def get(self):
         self.session['return'] = self.request.get('r')
-        # TODO: If user is missing we should allow redirection back to the current route 
-        url = github.authUrl(self.session)
-        logging.info('Redirecting to %s to get user info' % url)
-        self.redirect(url)
+
+        if self.request.get('paToken'):
+            user = session.user()
+            self.redirect('/')
+        else:
+            # Github login
+            state = '%030x' % random.randrange(16**30)
+            url = 'https://github.com/login/oauth/authorize?%s' % urllib.urlencode({
+                'client_id': config['github']['id'],
+                'scope': 'repo',
+                'state': state})
+            self.session['state'] = state
+            logging.info('Redirecting to %s to get user info' % url)
+            self.redirect(url)
 
 class LogoutPage(BaseHandler):
     def get(self):
@@ -186,16 +192,29 @@ class LogoutPage(BaseHandler):
 
 class GithubAuthPage(BaseHandler):
     def get(self):
-        # TODO: Verify the 'state'
         code = self.request.GET['code']
         state = self.request.GET['state']
-        github.getAccessToken(self.session, code, state)
-        if 'return' in self.session:
-            returnTo = self.session['return']
-            del session['return']
+        if state != self.session['state']:
+            self.response.set_status(403)
         else:
-            returnTo = '/'
-        self.redirect(returnTo)
+            request = urllib2.Request('https://github.com/login/oauth/access_token', urllib.urlencode({
+                'client_id': config['github']['id'],
+                'client_secret': config['github']['secret'],
+                'code': code
+            }))
+            data = urlparse.parse_qs(urllib2.urlopen(request).read())
+            logging.info('result is %s' % data)
+            aToken = data['access_token'][0]           
+            user = Github({'aToken': aToken}).user()
+            user['aToken'] = aToken
+            self.session['user'] = user
+            if 'return' in self.session and self.session['return']:
+                returnTo = self.session['return']
+                logging.info("Login complete for user %s, returning to %s" % (json.dumps(user), returnTo))
+                del self.session['return']
+            else:
+                returnTo = '/'
+            self.redirect(returnTo)
 
 app = webapp2.WSGIApplication([
     ('/', MainPage),

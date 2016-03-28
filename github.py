@@ -1,15 +1,12 @@
-import webapp2
-import sys
-import urllib, urlparse
-from urllib2 import Request, urlopen, URLError, HTTPError
+import webapp2, sys, urllib, urlparse, random
 import base64, json, logging, datetime, time
+from urllib2 import Request, urlopen, HTTPError
 from google.appengine.ext import deferred
 from google.appengine.ext import vendor
 vendor.add('lib') # uritemplate is vendored
 import uritemplate
-import random
 from model import Issue, Repo
-from config import config
+import zenhub
 
 githubUrl = 'https://api.github.com'
 
@@ -92,13 +89,13 @@ class Github:
                 issue = Issue(repo = repo.key, number = number)
             issue.github = self.issue(repo, number, issue.github)
             issue.githubUpdate = updateTime
-            issue.zenhubUpdate = None  # github update means zenhub update
+            issue.zenhubUpdate = None  # mark for Zenhub update
             logging.info("Upserting issue %s" % issue.number)
             issue.upsert()
+
+        # After a github sync, start a zenhub sync
+        zenhub.syncIssues(repo.key)
     
-        #TODO: Go get zenhub updates (separately so it can be metered safely)?
-        #getZenhubIssues(repo.key, keysToRefresh)
-        
     def newIssueNumbers(self, repo, until):
         """Return issues that changed after issueTime, along with most recent update time"""
         numbers = set()

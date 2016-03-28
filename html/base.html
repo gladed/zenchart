@@ -4,8 +4,8 @@
 {% if user %}
 <p>Welcome {{ user.name }} (<a href="/logout">Logout</a>)</p>
 {% else %}
-<form method="get">
-  <div>Github Personal Access Token: <input type="text" name="paToken" placeholder="github token"></div>
+<form action="/login" method="get">
+  <!--<div>Github Personal Access Token: <input type="text" name="paToken" placeholder="github token"></div>-->
   <div><input type="submit" value="Login"></div>
 </form>
 {% endif %}
