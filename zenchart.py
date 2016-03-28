@@ -95,7 +95,7 @@ class RepoPage(BaseHandler):
             deferred.defer(github.syncIssues, user, repo.key)
             self.redirect(repo.url())
         elif self.request.get('f'):
-            deferred.defer(github.getAllIssues, user, repo.key)
+            deferred.defer(github.syncIssues, user, repo.key, True)
             self.redirect(repo.url())
         else:
             issues = sorted(repo.issues(), key=lambda x: x.number, reverse=True)
@@ -114,31 +114,11 @@ class RepoDeletePage(BaseHandler):
         else:
             self.response.set_status(404)
 
-class RepoSyncPage(webapp2.RequestHandler):
-    def post(self, id):
-        repo = Repo.get(id)
-        if not repo:
-            self.response.set_status(404)
-        else:
-            deferred.defer(github.syncIssues, repo)
-            #deferred.defer(github.getAllIssues, repo)
-            #taskqueue.add(url=repo.url() + '/task/sync')
-            self.redirect(repo.url())
 
-class AddRepo(webapp2.RequestHandler):
-    def post(self):
-        name = self.request.get('repoName')
-        repo = Repo()
-        repo.name = name
-        repo.auth = Auth()
-        repo.auth.zenhubToken = self.request.get('zenhubToken')
-	repo.put()
-        deferred.defer(github.getAllIssues, repo)
-        self.redirect(repo.url())
-
-class IssuePage(webapp2.RequestHandler):
+class IssuePage(BaseHandler):
     def get(self, id, number):
-        repo = Repo.get(id)
+        user = self.user()
+        repo = Repo.get(user, id)
         if not repo:
             self.response.set_status(404)
         else:
@@ -149,23 +129,6 @@ class IssuePage(webapp2.RequestHandler):
                 full = { 'github': issue.github, 'zenhub': issue.zenhub }
                 self.response.headers['Content-Type'] = 'application/json'
                 self.response.out.write(json.dumps(full, indent=2))
-
-DEBUG = True
-
-class RepoTaskSync(webapp2.RequestHandler):
-    def post(self, id):
-        if not DEBUG and 'X-AppEngine-QueueName' not in self.request.headers:
-            self.response.set_status(400)
-        else:
-            repo = Repo.get(id)
-            if not repo:
-                self.response.set_status(404)
-            else:
-                logging.info("Sync Beginning")
-                #github.syncIssues(repo)
-                #deferred.defer(github.getAllIssues, repo)
-                deferred.defer(github.getZenhubIssues, repo.key)
-                self.response.write("OK")
 
 class LoginPage(BaseHandler):
     def get(self):
@@ -219,13 +182,10 @@ class GithubAuthPage(BaseHandler):
 app = webapp2.WSGIApplication([
     ('/', MainPage),
     ('/repo/add', RepoAddPage),
-    ('/addRepo', AddRepo),
     ('/login', LoginPage),
     ('/logout', LogoutPage),
     webapp2.Route(r'/repo/<id:\d+>', RepoPage),
     webapp2.Route(r'/repo/<id:\d+>/delete', RepoDeletePage),
-    webapp2.Route(r'/repo/<id:\d+>/sync', RepoSyncPage),
-    webapp2.Route(r'/repo/<id:\d+>/task/sync', RepoTaskSync),
     webapp2.Route(r'/repo/<id:\d+>/issue/<number:\d+>', IssuePage),
     ('/auth/github', GithubAuthPage),
 ],debug=True,config=config)

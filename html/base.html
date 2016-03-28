@@ -2,7 +2,7 @@
 <html>
 <body>
 {% if user %}
-<p>Welcome {{ user.name }} (<a href="/logout">Logout</a>)</p>
+<p>Welcome {{ user.name }} ({{ user.login }}). <a href="/logout">Logout</a></p>
 {% else %}
 <form action="/login" method="get">
   <!--<div>Github Personal Access Token: <input type="text" name="paToken" placeholder="github token"></div>-->

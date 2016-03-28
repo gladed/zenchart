@@ -7,21 +7,9 @@ class Auth(ndb.Model):
     zenhubToken = ndb.StringProperty()
 
 class Repo(ndb.Model):
-    @classmethod
-    def create(cls, user):
-        repo = Repo(parent = userKey(user))
-        return repo
-
-    @classmethod
-    def get(cls, user, id):
-        return super(Repo, cls).get_by_id(int(id), parent=userKey(user))
-
-    @classmethod
-    def repos(cls, user):
-        return Repo.query(ancestor = userKey(user)).fetch()
- 
     auth = ndb.StructuredProperty(Auth)
     name = ndb.StringProperty(indexed=True)
+    syncing = ndb.BooleanProperty()
     data = ndb.JsonProperty()
     updated = ndb.DateTimeProperty(auto_now=True)
 
@@ -42,6 +30,19 @@ class Repo(ndb.Model):
         for issue in self.issues():
             issue.key.delete()
         self.key.delete()
+
+    @classmethod
+    def create(cls, user):
+        repo = Repo(parent = userKey(user))
+        return repo
+
+    @classmethod
+    def get(cls, user, id):
+        return super(Repo, cls).get_by_id(int(id), parent=userKey(user))
+
+    @classmethod
+    def repos(cls, user):
+        return Repo.query(ancestor = userKey(user)).fetch()
 
 class Issue(ndb.Model):
     repo = ndb.KeyProperty(kind=Repo)

@@ -17,8 +17,6 @@ class Zenhub:
         request = Request(url)
         request.add_header('X-Authentication-Token', self.repo.auth.zenhubToken)
         return json.load(urlopen(request))
-#        except HTTPError, err:
-#            logging.info('Uh oh: %s', err)
 
     def issue(self, number):
         """Load an issue with events from zenhub"""
@@ -37,6 +35,9 @@ class Zenhub:
 def syncIssues(repoKey):
     try:
         Zenhub(repoKey.get()).syncIssues()
+        repo = repoKey.get()
+        repo.syncing = False
+        repo.put()
     except HTTPError as e:
         if e.code == 403:
             logging.info('Zenhub returned 403, trying again after a while...')

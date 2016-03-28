@@ -59,7 +59,7 @@ class Github:
         """Get user info from github and store it in the session"""
         return self.get('%s/user' % githubUrl)
 
-    def issue(self, repo, number, oldData):
+    def issue(self, repo, number, oldData=None):
         """Return github issue and event data"""
         url = uritemplate.expand(repo.data['issues_url'], { 'number': number })
         issue = self.get(url)
@@ -68,8 +68,24 @@ class Github:
         logging.info('Found %d events for #%s' % (len(issue['events']), number))
         return issue
 
-    def syncIssues(self, repoKey):
-        repo = repoKey.get()
+    def storeIssue(self, repo, issueData, updateTime = None):
+        """Update database with issue data"""
+        number = issueData['number']
+        issue = repo.issue(number)
+        if 'modified_at' in issueData and not updateTime:
+            updateTime = issueData['modified_at']
+        if not issue:
+            issue = Issue(repo = repo.key, number = number)
+        issue.github = self.issue(repo, number, issue.github)
+        issue.githubUpdate = updateTime
+        issue.zenhubUpdate = None  # mark for Zenhub update
+        logging.info("Upserting issue %s" % issue.number)
+        issue.upsert()
+
+    def issues(self, repo):
+        """Fetch all issues from github"""
+
+    def syncIssues(self, repo, deep=False):
 
         issues = repo.issues()
         if issues:
@@ -77,23 +93,19 @@ class Github:
         else:
             issueTime = None
     
-        logging.info("Getting updated issues since %s" % issueTime)
-        newNumbers, updateTime = self.newIssueNumbers(repo, issueTime)
+        if deep:
+            logging.info("Getting all issues")
+            url = uritemplate.expand(repo.data['issues_url'], { }) + '?state=all'
+            for issue in self.getAll(url):
+                self.storeIssue(repo, issue)
+        else:
+            logging.info("Getting updated issues since %s" % issueTime)
+            numbers, updateTime = self.newIssueNumbers(repo, issueTime)
+            for number in numbers:
+                repo.key.get() # Make sure repo is there or throw
+                self.storeIssue(repo, self.issue(repo, number), updateTime)
 
-        # Refresh each new issue
-        for number in newNumbers:
-            # if the repo suddenly disappears, quit
-            if not repoKey.get(): return
-            issue = repo.issue(number)
-            if not issue:
-                issue = Issue(repo = repo.key, number = number)
-            issue.github = self.issue(repo, number, issue.github)
-            issue.githubUpdate = updateTime
-            issue.zenhubUpdate = None  # mark for Zenhub update
-            logging.info("Upserting issue %s" % issue.number)
-            issue.upsert()
-
-        # After a github sync, start a zenhub sync
+        # When github sync is successful, launch a follow-up zenhub sync
         zenhub.syncIssues(repo.key)
     
     def newIssueNumbers(self, repo, until):
@@ -111,8 +123,18 @@ class Github:
                     numbers.add(event['payload']['issue']['number'])
         return list(numbers), latestTime
 
-def syncIssues(user, repoKey):
+def syncIssues(user, repoKey, deep=False):
     try:
-        Github(user).syncIssues(repoKey)
+        repo = repoKey.get()
+        repo.syncing = True
+        repo.put()
+        Github(user).syncIssues(repo, deep)
+        # Do not turn off sync bit, zenhub will do that.
     except:
         logging.exception('Failed to sync Github issues')
+        try:
+            repo = repoKey.get()
+            repo.syncing = False
+            repo.put()
+        except:
+            pass
