@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block body %}
+<h1><a href="/">Home</a> &rarr; Add Repository</h1>
+<form action="/repo/add" method="post">
+<div>Github Repository: <select name="repo">
+{% for repo in repos %}
+<option value='{{repo.full_name}}'>{{repo.full_name}} ({{repo.open_issues}} open issues)</option>
+{% endfor %}
+  </select>
+  </div>
+<div>Zenhub API Token: <input type="text" name="zenhubToken" placeholder="zenhub token"></div>
+<div><input type="submit" value="Add Repository"/>
+</form>
+{% endblock %}

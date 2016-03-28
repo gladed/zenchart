@@ -6,6 +6,8 @@ skip_files:
 - ^.*\.json
 - ^dev/.*
 - ^\..*
+- ^lib/simplejson/tests/.*
+- ^.*\.pyc
 
 handlers:
 - url: /.*

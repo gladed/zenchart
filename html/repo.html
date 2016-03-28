@@ -14,7 +14,8 @@
 {% else %}
 <p>No issues</p>
 {% endif %}
-<form action="{{ repo.url() + '/sync' }}" method="post">
+<form method="get">
+  <input type="hidden" name="s" value="1"/>
   <div><input type="submit" value="Sync this repo"></div>
 </form>
 

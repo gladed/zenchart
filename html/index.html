@@ -1,23 +1,14 @@
-<html>
-<body>
-{% if repos %}
+{% extends "base.html" %}
+{% block body %}
 <h1>Repositories</h1>
+{% if repos %}
 <ul>
   {% for repo in repos %}
 <li><a href="{{repo.url()}}">{{repo.name}}</a></li>
   {% endfor %}
 </ul>
 {% else %}
-<p>No repos found</p>
+<p>No repos added</p>
 {% endif %}
-
-<h1>Add a repo</h1>
-<form action="/addRepo" method="post">
-  <div>Github Repository Name: <input type="text" name="repoName" placeholder="org/repo"></div>
-  <div>Github User Name: <input type="text" name="githubUser" placeholder="username"></div>
-  <div>Github Personal Access Token: <input type="text" name="githubToken" placeholder="github token"></div>
-  <div>Zenhub API Token: <input type="text" name="zenhubToken" placeholder="zenhub token"></div>
-  <div><input type="submit" value="Add"></div>
-</form>
-</body>
-</html>
+<a href='/repo/add'>Add repository</a>
+{% endblock %}

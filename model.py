@@ -1,37 +1,32 @@
 from google.appengine.ext import ndb
 import urllib
 
-allRepoKey = ndb.Key('Repo', 'allrepos')
+def userKey(user): return ndb.Key('User', user['login'])
 
 class Auth(ndb.Model):
     zenhubToken = ndb.StringProperty()
-    githubUser = ndb.StringProperty()
-    githubToken = ndb.StringProperty()
 
 class Repo(ndb.Model):
+    @classmethod
+    def create(cls, user):
+        repo = Repo(parent = userKey(user))
+        return repo
+
+    @classmethod
+    def get(cls, user, id):
+        return super(Repo, cls).get_by_id(int(id), parent=userKey(user))
+
+    @classmethod
+    def repos(cls, user):
+        return Repo.query(ancestor = userKey(user)).fetch()
+ 
     auth = ndb.StructuredProperty(Auth)
     name = ndb.StringProperty(indexed=True)
     data = ndb.JsonProperty()
     updated = ndb.DateTimeProperty(auto_now=True)
 
-    def __init__(self, *args, **kwargs):
-        super(Repo, self).__init__(parent = Repo.getParentKey(), *args, **kwargs)
-    
     def url(self):
-        return '/repo/%s' % urllib.quote(str(self.key.id()), safe='')
-
-    @classmethod
-    def get(cls, id, *args, **kwargs):
-        return super(Repo, cls).get_by_id(int(id), parent=Repo.getParentKey(), *args, **kwargs)
-
-    @classmethod
-    def queryAll(cls):
-        return Repo.query(ancestor = Repo.getParentKey())
-
-    @classmethod
-    def getParentKey(cls):
-        # TODO: In the future this should come from the current user id probably
-        return allRepoKey
+        return '/repo/%d' % self.key.id()
 
     def issues(self):
         return Issue.query(Issue.repo==self.key).fetch()
@@ -41,6 +36,7 @@ class Repo(ndb.Model):
         if results:
             for result in results:
                 return result
+
     def delete(self):
         """Remove this item and its children from the db"""
         for issue in self.issues():
